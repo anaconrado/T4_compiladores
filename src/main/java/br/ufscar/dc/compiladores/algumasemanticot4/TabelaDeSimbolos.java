@@ -18,22 +18,25 @@ public class TabelaDeSimbolos {
         LITERAL,
         TIPO,
         INVALIDO,
+        REGISTRO,
+        VOID
     }
-    /*
+  
     public enum TipoFuncao {
         PROCEDIMENTO,
         FUNCAO,
         OUTRO
     }
-    */
+    
     class EntradaTabelaDeSimbolos {
         String nome;
         TipoDeclaracao tipoD;
-        //TipoFuncao tipoF;
+        TipoFuncao tipoF;
 
-        private EntradaTabelaDeSimbolos(String nome, TipoDeclaracao tipoD) {
+        private EntradaTabelaDeSimbolos(String nome, TipoDeclaracao tipoD, TipoFuncao tipoF) {
             this.nome = nome;
             this.tipoD = tipoD;
+            this.tipoF = tipoF;
         }
     }
     
@@ -44,8 +47,8 @@ public class TabelaDeSimbolos {
         this.tabelaDeSimbolos = new HashMap<>();  
     }
     
-    public void adicionar(String nome, TipoDeclaracao tipoD) {
-        tabelaDeSimbolos.put(nome, new EntradaTabelaDeSimbolos(nome, tipoD));
+    public void adicionar(String nome, TipoDeclaracao tipoD, TipoFuncao tipoF) {
+        tabelaDeSimbolos.put(nome, new EntradaTabelaDeSimbolos(nome, tipoD, tipoF));
     }
    
     public boolean existe(String nome) {

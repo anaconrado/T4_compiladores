@@ -7,6 +7,7 @@ package br.ufscar.dc.compiladores.algumasemanticot4;
 import br.ufscar.dc.compiladores.algumasemantico4.AlgumaParser;
 import br.ufscar.dc.compiladores.algumasemantico4.AlgumaParser.TermoContext;
 import br.ufscar.dc.compiladores.algumasemantico4.AlgumaParser.ParcelaContext;
+import static br.ufscar.dc.compiladores.algumasemanticot4.AlgumaSemanticoT4.dadosFuncao;
 import br.ufscar.dc.compiladores.algumasemanticot4.TabelaDeSimbolos.TipoDeclaracao;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,6 +19,30 @@ import org.antlr.v4.runtime.Token;
  */
 
 public class AlgumaSemanticoT4Utils {
+    
+    public static String reduzNome(String nome, String simbolo) {
+
+        if (nome.contains(simbolo)) {
+
+            boolean continua = true;
+            int cont = 0;
+            String nomeAux;
+
+            while (continua) {
+                nomeAux = nome.substring(cont);
+
+                if (nomeAux.startsWith(simbolo))
+                    continua = false;
+                else
+                    cont++;
+            }
+
+            nome = nome.substring(0, cont); 
+        }
+
+        return nome;
+
+    }   
     
     public static List <String> errosSemanticos = new ArrayList<>();
     
@@ -31,13 +56,11 @@ public class AlgumaSemanticoT4Utils {
 
         for (TermoContext termo : ctx.termo()) {
             TipoDeclaracao tipoAtual = verificarTipo(escopo, termo);              
-            System.out.println("Atual:" + tipoAtual);
             if (tipoRetorno == null)
                 tipoRetorno = tipoAtual;
             else if (tipoRetorno != tipoAtual && tipoAtual != TipoDeclaracao.INVALIDO)
                 tipoRetorno = TipoDeclaracao.INVALIDO;
         }
-        System.out.println("Retorno:" + tipoRetorno);
         return tipoRetorno;
     }
 
@@ -61,7 +84,12 @@ public class AlgumaSemanticoT4Utils {
 
         for (ParcelaContext parcela : ctx.parcela()) {
             TabelaDeSimbolos.TipoDeclaracao tipoAtual = verificarTipo(escopo, parcela);
-            if (tipoRetorno == null)
+            if(tipoRetorno == TipoDeclaracao.REGISTRO){
+                String nome = parcela.getText();
+                nome = reduzNome(nome, "(");
+                tipoRetorno = verificarTipo(escopo, nome);
+            }
+            else if (tipoRetorno == null)
                 tipoRetorno = tipoAtual;
             else if (tipoRetorno != tipoAtual && tipoAtual != TipoDeclaracao.INVALIDO) 
                 tipoRetorno = TipoDeclaracao.INVALIDO;
@@ -74,17 +102,28 @@ public class AlgumaSemanticoT4Utils {
         if (ctx.parcela_nao_unario() != null) {
             tipoRetorno = verificarTipo(escopo, ctx.parcela_nao_unario());
         } 
-        else {
+        else 
             tipoRetorno = verificarTipo(escopo, ctx.parcela_unario());
-        }
         return tipoRetorno;
     }
 
     private static TipoDeclaracao verificarTipo(Escopo escopo, AlgumaParser.Parcela_nao_unarioContext ctx) {
+        TipoDeclaracao tipoRetorno;
+        String nome;
+        
         if (ctx.identificador() != null) {
-            return verificarTipo(escopo, ctx.identificador());
+            nome = ctx.identificador().getText();
+            
+            if(!escopo.obterEscopoAtual().existe(nome)) {
+                adicionarErrorsSemanticos(ctx.identificador().getStart(), "identificador " + ctx.identificador().getText() + " nao declarado");
+                tipoRetorno = TipoDeclaracao.INVALIDO; 
+            }
+            else
+                tipoRetorno = escopo.obterEscopoAtual().verificar(ctx.identificador().getText());
         }
-        return TipoDeclaracao.LITERAL;
+        else
+            tipoRetorno = TipoDeclaracao.LITERAL;
+        return tipoRetorno; 
     }
     
     private static TipoDeclaracao verificarTipo(Escopo escopo, AlgumaParser.IdentificadorContext ctx) {
@@ -107,23 +146,54 @@ public class AlgumaSemanticoT4Utils {
     }
     
     public static TipoDeclaracao verificarTipo(Escopo escopo, AlgumaParser.Parcela_unarioContext ctx) {
+        TipoDeclaracao tipoRetorno = null;
+        String nome;
+        
         if (ctx.NUM_INT() != null) {
             return TipoDeclaracao.INTEIRO;
         }
         if (ctx.NUM_REAL() != null) {
             return TipoDeclaracao.REAL;
         }
-        if (ctx.identificador() != null) {          
-            return verificarTipo(escopo, ctx.identificador());
+        if (ctx.identificador() != null) { 
+            // Testa se tem dimensao (é vetor) e pego o nome
+            if(!ctx.identificador().dimensao().exp_aritmetica().isEmpty())
+                nome = ctx.identificador().IDENT().get(0).getText();
+            else
+                nome = ctx.identificador().getText();
+            // Se ja existe na tabela, retorna seu tipo 
+            if(escopo.obterEscopoAtual().existe(nome)) 
+                tipoRetorno = escopo.obterEscopoAtual().verificar(nome);
+            else {
+                TabelaDeSimbolos tabelaAux = escopo.obterEscopoAtual();             
+                if(!tabelaAux.existe(nome)) {
+                    adicionarErrorsSemanticos(ctx.identificador().getStart(), "identificador " + ctx.identificador().getText() + "nao declarado");
+                    tipoRetorno = TipoDeclaracao.INVALIDO;                                              
+                }
+                else
+                    tipoRetorno = tabelaAux.verificar(nome);
+            }
         }
         if (ctx.IDENT() != null) {
-            TipoDeclaracao TipoRetorno;
-            TipoRetorno = verificarTipo(escopo, ctx.IDENT().getText());
-            return getTipoDeclaracao(escopo, ctx, TipoRetorno);
+            if(dadosFuncao.containsKey(ctx.IDENT().getText())) {
+                List<TipoDeclaracao> aux = dadosFuncao.get(ctx.IDENT().getText());
+                
+                if(aux.size() == ctx.expressao().size()) {
+                    for(int i = 0; i < ctx.expressao().size(); i++)
+                        if(aux.get(i) != verificarTipo(escopo, ctx.expressao().get(i)))
+                            adicionarErrorsSemanticos(ctx.expressao().get(i).getStart(), "incompatibilidade de parametros na chamada de " + ctx.IDENT().getText());
+                    tipoRetorno = aux.get(aux.size() - 1);
+                }
+                else 
+                    adicionarErrorsSemanticos(ctx.IDENT().getSymbol(), "incompatibilidade de parametros na chamada de " + ctx.IDENT().getText());
+            } 
+            else
+                tipoRetorno = TipoDeclaracao.INVALIDO;
         } else {
             TipoDeclaracao TipoRetorno = null;
             return getTipoDeclaracao(escopo, ctx, TipoRetorno);
         }
+        return tipoRetorno;
     }
     
         
