@@ -12,4 +12,4 @@
 
 ## Rodar
 
-``` java -jar target/AlgumaSemantica-1.0-SNAPSHOT-jar-with-dependencies.jar path_de_entrada path_de_saida ```
+``` java -jar target/AlgumaSemanticoT4-1.0-SNAPSHOT-jar-with-dependencies.jar path_de_entrada path_de_saida ```
