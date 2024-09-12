@@ -4,6 +4,7 @@
  */
 package br.ufscar.dc.compiladores.algumasemanticot4;
 
+import static br.ufscar.dc.compiladores.algumasemanticot4.AlgumaSemanticoT4Utils.reduzNome;
 import java.util.HashMap;
 
 /**
@@ -48,14 +49,18 @@ public class TabelaDeSimbolos {
     }
     
     public void adicionar(String nome, TipoDeclaracao tipoD, TipoFuncao tipoF) {
+        // Para variaveis do tipo vetor
+        nome = reduzNome(nome, "[");
         tabelaDeSimbolos.put(nome, new EntradaTabelaDeSimbolos(nome, tipoD, tipoF));
     }
    
     public boolean existe(String nome) {
+        nome = reduzNome(nome, "[");
         return tabelaDeSimbolos.containsKey(nome);
     } 
     
     public TipoDeclaracao verificar(String nome) {
+        nome = reduzNome(nome, "[");
         return tabelaDeSimbolos.get(nome).tipoD;
     }
 }

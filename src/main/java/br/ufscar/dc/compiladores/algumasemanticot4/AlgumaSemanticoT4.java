@@ -9,9 +9,11 @@ import br.ufscar.dc.compiladores.algumasemantico4.AlgumaParser;
 import static br.ufscar.dc.compiladores.algumasemanticot4.AlgumaSemanticoT4Utils.adicionarErrorsSemanticos;
 import br.ufscar.dc.compiladores.algumasemanticot4.TabelaDeSimbolos.TipoDeclaracao;
 import br.ufscar.dc.compiladores.algumasemanticot4.TabelaDeSimbolos.TipoFuncao;
+import static br.ufscar.dc.compiladores.algumasemanticot4.AlgumaSemanticoT4Utils.verificarTipo;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import org.antlr.v4.runtime.Token;
 
 /**
  *
@@ -57,6 +59,48 @@ public class AlgumaSemanticoT4 extends AlgumaBaseVisitor {
 
         return tipoAux;
     }
+    
+    public void adicionaSimboloTabela(String nome, String tipo, Token nomeToken, Token tipoToken, TipoFuncao tipoE) {
+
+        TipoDeclaracao tipoItem;
+
+        // Remove simbolo de ponteira se tiver
+        if (tipo.charAt(0) == '^')
+            tipo = tipo.substring(1);
+
+        // Checagem do tipo
+        switch (tipo) {
+            case "literal":
+                tipoItem = TipoDeclaracao.LITERAL;
+                break;
+            case "inteiro":
+                tipoItem = TipoDeclaracao.INTEIRO;
+                break;
+            case "real":
+                tipoItem = TipoDeclaracao.REAL;
+                break;
+            case "logico":
+                tipoItem = TipoDeclaracao.LOGICO;
+                break;
+            case "void":
+                tipoItem = TipoDeclaracao.VOID;
+                break;
+            case "registro":
+                tipoItem = TipoDeclaracao.REGISTRO;
+                break;
+            default:
+                // Nesse caso, o tiipo é invalido, portanto, lançamos erro
+                tipoItem = TipoDeclaracao.INVALIDO;
+                adicionarErrorsSemanticos(tipoToken, "tipo " + tipo + " nao declarado");
+                break;
+        }
+
+        // Erro de não declaração se não exitir no escopo
+        if (!escopo.obterEscopoAtual().existe(nome))
+            escopo.obterEscopoAtual().adicionar(nome, tipoItem, tipoE);
+        else
+            adicionarErrorsSemanticos(nomeToken, "identificador " + nome + " ja declarado anteriormente");
+    }
 
     // Visita declaracao local que pode ser 3 tipos (constante, variavel ou tipo)
     @Override
@@ -70,118 +114,59 @@ public class AlgumaSemanticoT4 extends AlgumaBaseVisitor {
             if (ctx.variavel().tipo().registro() != null) {
                 // Itera lista de registro declaradas e adiciona ao escopo 
                 for (AlgumaParser.IdentificadorContext ic : ctx.variavel().identificador()) {
-                    // Verifica a existência do símbolo no escopo atual e exibe um erro caso já tenha sido declarado.
-                    if (!escopo.obterEscopoAtual().existe(ic.getText()))
-                        escopo.obterEscopoAtual().adicionar(ic.getText(), TipoDeclaracao.REGISTRO, TipoFuncao.OUTRO);
-                    else
-                        adicionarErrorsSemanticos(ic.getStart(), "identificador " + ic.getText() + " ja declarado anteriormente");
+                    adicionaSimboloTabela(ic.getText(), "registro", ic.getStart(), null, TipoFuncao.OUTRO);
                     // Adiciona as variaveis desse registro com seu tipo
                     for (AlgumaParser.VariavelContext vc : ctx.variavel().tipo().registro().variavel()) {
                         tipoVariavel = vc.tipo().getText();
                         for (AlgumaParser.IdentificadorContext icr : vc.identificador()){
-                            TipoDeclaracao tipo;
-                            if(tipoVariavel.charAt(0) == '^') {
-                                tipoVariavel = tipoVariavel.substring(1);
-                            }
-                            switch (tipoVariavel) {
-                                case "literal":
-                                    tipo = TipoDeclaracao.LITERAL;
-                                    break;
-                                case "inteiro":
-                                    tipo = TipoDeclaracao.INTEIRO;
-                                    break;
-                                case "real":
-                                    tipo = TipoDeclaracao.REAL;
-                                    break;
-                                case "logico":
-                                    tipo = TipoDeclaracao.LOGICO;
-                                    break;
-                                case "void":
-                                    tipo = TipoDeclaracao.VOID;
-                                    break;
-                                case "registro":
-                                    tipo = TipoDeclaracao.REGISTRO;
-                                    break;
-                                default:
-                                    tipo = TipoDeclaracao.INVALIDO;
-                                    break;
-                            }
-                            if (tipo == TipoDeclaracao.INVALIDO){
-                                adicionarErrorsSemanticos(vc.tipo().getStart(), "tipo " + tipoVariavel + " nao declarado");
-                                System.out.println("Foi aqui 1");
-                            }
-                            // Verifica a existência do símbolo no escopo atual e exibe um erro caso já tenha sido declarado.
-                            if (!escopo.obterEscopoAtual().existe(ic.getText() + "." + icr.getText()))
-                                escopo.obterEscopoAtual().adicionar(ic.getText() + "." + icr.getText(), tipo, TipoFuncao.OUTRO);
-                            else
-                                adicionarErrorsSemanticos(icr.getStart(), "identificador " + ic.getText() + "." + icr.getText() + " ja declarado anteriormente");
-
+                            adicionaSimboloTabela(ic.getText() + "." + icr.getText(), tipoVariavel, icr.getStart(), vc.tipo().getStart(), TipoFuncao.OUTRO);
                         }
                     }
                 }
             }
             else {
-                //Itera variaveis declaradas             
-                for (AlgumaParser.IdentificadorContext id : ctx.variavel().identificador()) {
-                    // Adiciona erro se constante ja existe no escopo atual
-                    if (escopo.obterEscopoAtual().existe(id.getText())) {
-                        adicionarErrorsSemanticos(id.start, "identificador " + id.getText() + " ja declarado anteriormente");
-                    } 
-                    // Se nao, adiciona no escopo com seu tipo
-                    else {
-                        TipoDeclaracao tipo = null;
-                        String tipoTexto = ctx.variavel().tipo().getText();
-                        // Retira identificador de ponteiro para comparar tipo
-                        if(tipoTexto.charAt(0) == '^')
-                            tipoTexto = tipoTexto.substring(1);
-                        if (tipoTexto.equals("literal")) {
-                            tipo = TipoDeclaracao.LITERAL;
-                        } else if (tipoTexto.equals("inteiro")) {
-                            tipo = TipoDeclaracao.INTEIRO;
-                        } else if (tipoTexto.equals("real")) {
-                            tipo = TipoDeclaracao.REAL;
-                        } else if (tipoTexto.equals("logico")) {
-                            tipo = TipoDeclaracao.LOGICO;
+                tipoVariavel = ctx.variavel().tipo().getText(); 
+                // Testa se é um tipo que foi declarado dentro de um registro 
+                if (tabelaRegistro.containsKey(tipoVariavel)) {
+                    ArrayList<String> variaveisRegistro = tabelaRegistro.get(tipoVariavel);
+
+                    for (AlgumaParser.IdentificadorContext ic : ctx.variavel().identificador()) {
+                        nomeVariavel = ic.IDENT().get(0).getText();
+                        // Lanca erro se já foi declarado
+                        if (escopo.obterEscopoAtual().existe(nomeVariavel) || tabelaRegistro.containsKey(nomeVariavel)) {
+                            adicionarErrorsSemanticos(ic.getStart(), "identificador " + nomeVariavel + " ja declarado anteriormente");
+                        // Adiciona a tabela se não 
+                        } else {  
+                            adicionaSimboloTabela(nomeVariavel, "registro", ic.getStart(), ctx.variavel().tipo().getStart(), TipoFuncao.OUTRO);                            
+                            for (int i = 0; i < variaveisRegistro.size(); i = i + 2) {
+                                adicionaSimboloTabela(nomeVariavel + "." + variaveisRegistro.get(i), variaveisRegistro.get(i+1), ic.getStart(), ctx.variavel().tipo().getStart(), TipoFuncao.OUTRO);
+                            }
                         }
-                        //Se nao for um dos tipos no if o tipo guardado e null
-                        escopo.obterEscopoAtual().adicionar(id.getText(), tipo, TipoFuncao.OUTRO);
-                        //System.out.println("Variable: " + id.getText() + " Type: " + tipo);   
+                    }
+                // Caso não seja uma variável dentro de um registro (variavel normal)
+                } else {
+                    for (AlgumaParser.IdentificadorContext ident : ctx.variavel().identificador()) {
+                        nomeVariavel = ident.getText();
+
+                        // Verifica se a declaração atual é o nome de uma função ou procedimento.
+                        if (dadosFuncao.containsKey(nomeVariavel))
+                            adicionarErrorsSemanticos(ident.getStart(), "identificador " + nomeVariavel + " ja declarado anteriormente");
+                        else
+                            adicionaSimboloTabela(nomeVariavel, tipoVariavel, ident.getStart(), ctx.variavel().tipo().getStart(), TipoFuncao.OUTRO); 
                     }
                 }
             }
         }
         // Declaracao de constante
         else if (ctx.getChild(0).getText().equals("constante")){
-            // Adiciona erro se constante ja existe no escopo atual
-            if (escopo.obterEscopoAtual().existe(ctx.IDENT().getText())) {
-                adicionarErrorsSemanticos(ctx.start, "constante " + ctx.IDENT().getText() + " ja declarado anteriormente");
-            // Se nao, adiciona no escopo com seu tipo
-            } else {
-                TipoDeclaracao tipo = null;
-                String tipoBasicoTexto = ctx.tipo_basico().getText();
-                
-                if(tipoBasicoTexto.charAt(0) == '^')
-                    tipoBasicoTexto = tipoBasicoTexto.substring(1);
-
-                if (tipoBasicoTexto.equals("literal")) {
-                    tipo = TipoDeclaracao.LITERAL;
-                } else if (tipoBasicoTexto.equals("inteiro")) {
-                    tipo = TipoDeclaracao.INTEIRO;
-                } else if (tipoBasicoTexto.equals("real")) {
-                    tipo = TipoDeclaracao.REAL;
-                } else if (tipoBasicoTexto.equals("logico")) {
-                    tipo = TipoDeclaracao.LOGICO;
-                }
-                //Se nao for um dos tipos no if o tipo guardado e null
-                escopo.obterEscopoAtual().adicionar(ctx.IDENT().getText(), tipo, TipoFuncao.OUTRO);
-            }
+            adicionaSimboloTabela(ctx.IDENT().getText(), ctx.tipo_basico().getText(), ctx.IDENT().getSymbol(), ctx.IDENT().getSymbol(), TipoFuncao.OUTRO);
         }
-        
         // Declaracao de tipo 
         else if (ctx.getChild(0).getText().equals("tipo")) { 
+            //Caso em que é registro 
             if (ctx.tipo().registro() != null) {
                 ArrayList<String> variaveisRegistro = new ArrayList<>();
-
+                //Coloca todas as variaveis (nome e tipo) do registro em uma lista 
                 for (AlgumaParser.VariavelContext vc : ctx.tipo().registro().variavel()) {
                     tipoVariavel = vc.tipo().getText();
 
@@ -190,6 +175,7 @@ public class AlgumaSemanticoT4 extends AlgumaBaseVisitor {
                         variaveisRegistro.add(tipoVariavel);
                     }
                 }
+                //Adiciona variaveis à tabela de registros 
                 tabelaRegistro.put(ctx.IDENT().getText(), variaveisRegistro);
             }
         }
@@ -199,10 +185,9 @@ public class AlgumaSemanticoT4 extends AlgumaBaseVisitor {
     // Visita declaracoes global, que pode conter procedimento ou funcao
     @Override
     public Object visitDeclaracao_global(AlgumaParser.Declaracao_globalContext ctx) {
-        // Cria um novo escopo para cada novo procedimento ou função.
+        // Primeiramente, cria uum novo escopo para essa função / escopo
         escopo.criarNovoEscopo();
 
-        // Lista auxiliar que armazenará os tipos das variáveis
         ArrayList<TipoDeclaracao> tiposVariaveis = new ArrayList<>();
         ArrayList<String> variaveisRegistro;
 
@@ -213,161 +198,52 @@ public class AlgumaSemanticoT4 extends AlgumaBaseVisitor {
         if (ctx.getText().contains("procedimento")) {
 
             for (AlgumaParser.ParametroContext parametro : ctx.parametros().parametro()) {
-                // Verifica se é um tipo básico válido.
+                //Adicona parametros do procedimento à tabela e a lista de variáveis auxiliar
                 if (parametro.tipo_estendido().tipo_basico_ident().tipo_basico() != null) {
-                    TipoDeclaracao tipoItem;
-                    String tipo = parametro.tipo_estendido().tipo_basico_ident().tipo_basico().getText(); 
-                    if (tipo.charAt(0) == '^')
-                       tipo = tipo.substring(1);
-                    
-                    switch (tipo) {
-                        case "literal":
-                            tipoItem = TipoDeclaracao.LITERAL;
-                            break;
-                        case "inteiro":
-                            tipoItem = TipoDeclaracao.INTEIRO;
-                            break;
-                        case "real":
-                            tipoItem = TipoDeclaracao.REAL;
-                            break;
-                        case "logico":
-                            tipoItem = TipoDeclaracao.LOGICO;
-                            break;
-                        case "void":
-                            tipoItem = TipoDeclaracao.VOID;
-                            break;
-                        case "registro":
-                            tipoItem = TipoDeclaracao.REGISTRO;
-                            break;
-                        default:
-                            tipoItem = TipoDeclaracao.INVALIDO;
-                            break;
-                    }
-                    
-                    if (!escopo.obterEscopoAtual().existe(parametro.identificador().get(0).getText()))
-                        escopo.obterEscopoAtual().adicionar(parametro.identificador().get(0).getText(), tipoItem, TipoFuncao.OUTRO);
-                    else
-                        adicionarErrorsSemanticos(parametro.getStart(), "identificador " + parametro.identificador().get(0).getText() + " ja declarado anteriormente");
-
-                    // Obtém os tipos dos parâmetros para adicioná-las na tabela de dados de funções e procedimentos.
+                    adicionaSimboloTabela(parametro.identificador().get(0).getText(), parametro.tipo_estendido().tipo_basico_ident().tipo_basico().getText(), parametro.getStart(), parametro.getStart(), TipoFuncao.OUTRO);
                     tipoVariavel = parametro.tipo_estendido().getText();
                     tipoAux = confereTipo(tabelaRegistro, tipoVariavel);
                     tiposVariaveis.add(tipoAux);
                 } 
-                // Verifica se é um registro
+                // Caso parâmetro do procedimento seja um registro
                 else if (tabelaRegistro.containsKey(parametro.tipo_estendido().tipo_basico_ident().IDENT().getText())) {
                     // Recupera os elementos do registro.
                     variaveisRegistro = tabelaRegistro.get(parametro.tipo_estendido().tipo_basico_ident().IDENT().getText());
 
-                    // Obtém os tipos dos parâmetros para adicioná-las na tabela de dados de funções e procedimentos.
+                    // Adiciona os tipos do registro para adicionar a tabela de procedimento
                     tipoVariavel = parametro.tipo_estendido().getText();
                     tipoAux = confereTipo(tabelaRegistro, tipoVariavel);
                     tiposVariaveis.add(tipoAux);
 
                     for (AlgumaParser.IdentificadorContext ic : parametro.identificador()){
-                        // Adiciona os elementos do registro na tabela no formato adequado com seus respectivos tipos individuais.
+                        // Adiciona cada variável do registro à tabela de simbolos do escopo 
                         for (int i = 0; i < variaveisRegistro.size(); i = i + 2){
-                            String tipo = variaveisRegistro.get(i + 1);
-                            if (tipo.charAt(0) == '^')
-                                tipo = tipo.substring(1);
-                            TipoDeclaracao tipoItem;
-                            switch (tipo) {
-                                case "literal":
-                                    tipoItem = TipoDeclaracao.LITERAL;
-                                    break;
-                                case "inteiro":
-                                    tipoItem = TipoDeclaracao.INTEIRO;
-                                    break;
-                                case "real":
-                                    tipoItem = TipoDeclaracao.REAL;
-                                    break;
-                                case "logico":
-                                    tipoItem = TipoDeclaracao.LOGICO;
-                                    break;
-                                case "void":
-                                    tipoItem = TipoDeclaracao.VOID;
-                                    break;
-                                case "registro":
-                                    tipoItem = TipoDeclaracao.REGISTRO;
-                                    break;
-                                default:
-                                    tipoItem = TipoDeclaracao.INVALIDO;
-                                    break;
-                            }
-                            if (tipoItem == TipoDeclaracao.INVALIDO){
-                                adicionarErrorsSemanticos(ic.getStart(), "tipo " + variaveisRegistro.get(i + 1) + " nao declarado");
-                                System.out.println("Foi aqui 2");
-                            }
-
-                            // Verifica a existência do símbolo no escopo atual e exibe um erro caso já tenha sido declarado.
-                            if (!escopo.obterEscopoAtual().existe(ic.getText() + "." + variaveisRegistro.get(i)))
-                                escopo.obterEscopoAtual().adicionar(ic.getText() + "." + variaveisRegistro.get(i), tipoItem, TipoFuncao.OUTRO);
-                            else
-                                adicionarErrorsSemanticos(ic.getStart(), "identificador " + ic.getText() + "." + variaveisRegistro.get(i) + " ja declarado anteriormente");
+                            adicionaSimboloTabela(ic.getText() + "." + variaveisRegistro.get(i), variaveisRegistro.get(i + 1), ic.getStart(), ic.getStart(), TipoFuncao.OUTRO);                 
                         }
                     }
                 } 
+                // Erro caso tipo não tiver sido declarado 
                 else{
                     adicionarErrorsSemanticos(parametro.getStart(), "tipo nao declarado");  
                     System.out.println("Foi aqui 3");
                 }
             }
-            // Verifica se há algum comando "retorne" dentro de um procedimento e indica o erro.
+            // Erro de return dentro de procedimento
             for (AlgumaParser.CmdContext c : ctx.cmd())    
                 if (c.cmdRetorne() != null)  
                     adicionarErrorsSemanticos(c.getStart(), "comando retorne nao permitido nesse escopo");    
 
-            // Adiciona o nome do procedimento e os tipos dos parâmetros na tabela de dados.
+            // Adiciona o nome do procedimento e os tipos dos parâmetros na tabela de dados de funcao 
             dadosFuncao.put(ctx.IDENT().getText(), tiposVariaveis);
 
-        // Verifica se o escopo atual pertence a uma função.
+        // Caso seja uma função (praticamente o mesmo processo que procedimento mas com tipo funcao sendo adicionado
         } else if (ctx.getText().contains("funcao")) {
-            // A partir daqui, utiliza uma lógica semelhante às verificações para o procedimento.
+            
             for (AlgumaParser.ParametroContext parametro : ctx.parametros().parametro()) {
 
                 if (parametro.tipo_estendido().tipo_basico_ident().tipo_basico() != null) {
                     
-                    TipoDeclaracao tipoItem;
-                    String tipo = parametro.tipo_estendido().tipo_basico_ident().tipo_basico().getText();
-                    // Remoção do ponteiro do tipo pra verificação.
-                    if (tipo.charAt(0) == '^')
-                        tipo = tipo.substring(1);
-
-                    switch (tipo) {
-                        case "literal":
-                            tipoItem = TipoDeclaracao.LITERAL;
-                            break;
-                        case "inteiro":
-                            tipoItem = TipoDeclaracao.INTEIRO;
-                            break;
-                        case "real":
-                            tipoItem = TipoDeclaracao.REAL;
-                            break;
-                        case "logico":
-                            tipoItem = TipoDeclaracao.LOGICO;
-                            break;
-                        case "void":
-                            tipoItem = TipoDeclaracao.VOID;
-                            break;
-                        case "registro":
-                            tipoItem = TipoDeclaracao.REGISTRO;
-                            break;
-                        default:
-                            tipoItem = TipoDeclaracao.INVALIDO;
-                            break;
-                    }
-
-                    // Caso o tipo seja inválido, exibe a mensagem de que o tipo não foi declarado.
-                    if (tipoItem == TipoDeclaracao.INVALIDO){
-                        adicionarErrorsSemanticos(parametro.getStart(), "tipo " + tipo + " nao declarado");
-                        System.out.println("Foi aqui 4");
-                    }
-
-                    // Verifica a existência do símbolo no escopo atual e exibe um erro caso já tenha sido declarado.
-                    if (!escopo.obterEscopoAtual().existe(parametro.identificador().get(0).getText()))
-                        escopo.obterEscopoAtual().adicionar(parametro.identificador().get(0).getText(), tipoItem, TipoFuncao.OUTRO);
-                    else
-                        adicionarErrorsSemanticos(parametro.getStart(), "identificador " + parametro.identificador().get(0).getText() + " ja declarado anteriormente");
+                    adicionaSimboloTabela(parametro.identificador().get(0).getText(), parametro.tipo_estendido().tipo_basico_ident().tipo_basico().getText(), parametro.getStart(), parametro.getStart(), TipoFuncao.OUTRO);
 
                     tipoVariavel = parametro.tipo_estendido().getText();
                     tipoAux = confereTipo(tabelaRegistro, tipoVariavel);
@@ -382,46 +258,7 @@ public class AlgumaSemanticoT4 extends AlgumaBaseVisitor {
 
                     for (AlgumaParser.IdentificadorContext ic : parametro.identificador())
                         for (int i = 0; i < variaveisRegistro.size(); i = i + 2) {
-                            TipoDeclaracao tipoItem;
-                            String tipo = variaveisRegistro.get(i + 1);
-                            if (tipo.charAt(0) == '^')
-                                tipo = tipo.substring(1);
-
-                            switch (tipo) {
-                                case "literal":
-                                    tipoItem = TipoDeclaracao.LITERAL;
-                                    break;
-                                case "inteiro":
-                                    tipoItem = TipoDeclaracao.INTEIRO;
-                                    break;
-                                case "real":
-                                    tipoItem = TipoDeclaracao.REAL;
-                                    break;
-                                case "logico":
-                                    tipoItem = TipoDeclaracao.LOGICO;
-                                    break;
-                                case "void":
-                                    tipoItem = TipoDeclaracao.VOID;
-                                    break;
-                                case "registro":
-                                    tipoItem = TipoDeclaracao.REGISTRO;
-                                    break;
-                                default:
-                                    tipoItem = TipoDeclaracao.INVALIDO;
-                                    break;
-                            }
-
-                            // Caso o tipo seja inválido, exibe a mensagem de que o tipo não foi declarado.
-                            if (tipoItem == TipoDeclaracao.INVALIDO){
-                                adicionarErrorsSemanticos(ic.getStart(), "tipo " + tipo + " nao declarado");
-                                System.out.println("Foi aqui 3");
-                            }
-
-                            // Verifica a existência do símbolo no escopo atual e exibe um erro caso já tenha sido declarado.
-                            if (!escopo.obterEscopoAtual().existe(ic.getText() + "." + variaveisRegistro.get(i)))
-                                escopo.obterEscopoAtual().adicionar(ic.getText() + "." + variaveisRegistro.get(i), tipoItem, TipoFuncao.OUTRO);
-                            else
-                                adicionarErrorsSemanticos(ic.getStart(), "identificador " + ic.getText() + "." + variaveisRegistro.get(i) + " ja declarado anteriormente");
+                            adicionaSimboloTabela(ic.getText() + "." + variaveisRegistro.get(i), variaveisRegistro.get(i + 1), ic.getStart(), ic.getStart(), TipoFuncao.OUTRO);
                         }
                 } 
                 else{
@@ -430,7 +267,7 @@ public class AlgumaSemanticoT4 extends AlgumaBaseVisitor {
                 }
             }
 
-            // Adiciona o nome da função e os tipos dos parâmetros na tabela de dados.
+            // Adiciona o nome da função e os tipos dos parâmetros na tabela de funcao
             dadosFuncao.put(ctx.IDENT().getText(), tiposVariaveis);
         }
 
@@ -439,60 +276,18 @@ public class AlgumaSemanticoT4 extends AlgumaBaseVisitor {
         // Desempilha o escopo atual
         escopo.abandonarEscopo();
 
-        // Adiciona o nome do procedimento/função na tabela
+        // Adiciona o nome do procedimento na tabela
         if (ctx.getText().contains("procedimento")){    
-            if (!escopo.obterEscopoAtual().existe(ctx.IDENT().getText()))
-                escopo.obterEscopoAtual().adicionar(ctx.IDENT().getText(), TipoDeclaracao.VOID, TipoFuncao.PROCEDIMENTO);
-            else
-                adicionarErrorsSemanticos(ctx.getStart(), "identificador " + ctx.IDENT().getText() + " ja declarado anteriormente");
+            adicionaSimboloTabela(ctx.IDENT().getText(), "void", ctx.getStart(), ctx.getStart(), TipoFuncao.PROCEDIMENTO);
         }
+        // Adiciona o nome da funcao na tabela
         else if (ctx.getText().contains("funcao")){
-            TipoDeclaracao tipoItem;
-            String tipo = ctx.tipo_estendido().tipo_basico_ident().tipo_basico().getText();
-            // Remoção do ponteiro do tipo pra verificação.
-            if (tipo.charAt(0) == '^')
-                tipo = tipo.substring(1);
-
-            switch (tipo) {
-                case "literal":
-                    tipoItem = TipoDeclaracao.LITERAL;
-                    break;
-                case "inteiro":
-                    tipoItem = TipoDeclaracao.INTEIRO;
-                    break;
-                case "real":
-                    tipoItem = TipoDeclaracao.REAL;
-                    break;
-                case "logico":
-                    tipoItem = TipoDeclaracao.LOGICO;
-                    break;
-                case "void":
-                    tipoItem = TipoDeclaracao.VOID;
-                    break;
-                case "registro":
-                    tipoItem = TipoDeclaracao.REGISTRO;
-                    break;
-                default:
-                    tipoItem = TipoDeclaracao.INVALIDO;
-                    break;
-            }
-
-            // Caso o tipo seja inválido, exibe a mensagem de que o tipo não foi declarado.
-            if (tipoItem == TipoDeclaracao.INVALIDO){
-                adicionarErrorsSemanticos(ctx.getStart(), "tipo " + tipo + " nao declarado");
-                System.out.println("Foi aqui 7");
-            }
-
-            // Verifica a existência do símbolo no escopo atual e exibe um erro caso já tenha sido declarado.
-            if (!escopo.obterEscopoAtual().existe(ctx.IDENT().getText()))
-                escopo.obterEscopoAtual().adicionar(ctx.IDENT().getText(), tipoItem, TipoFuncao.FUNCAO);
-            else
-                adicionarErrorsSemanticos(ctx.getStart(), "identificador " + ctx.IDENT().getText() + " ja declarado anteriormente");
+            adicionaSimboloTabela(ctx.IDENT().getText(), ctx.tipo_estendido().tipo_basico_ident().tipo_basico().getText(), ctx.getStart(), ctx.getStart(), TipoFuncao.FUNCAO);
         }
         return null;
     }
     
-    
+    /*
     @Override
     public Object visitTipo_basico_ident(AlgumaParser.Tipo_basico_identContext ctx) {
         // itera todos os os escopos para verificar se o tipo ja foi declarado
@@ -507,67 +302,83 @@ public class AlgumaSemanticoT4 extends AlgumaBaseVisitor {
         }
         return super.visitTipo_basico_ident(ctx);
     }
-    /*
+    */
+    // Visitador de comando leia
     @Override
     public Object visitCmdLeia(AlgumaParser.CmdLeiaContext ctx) {
         for (AlgumaParser.IdentificadorContext id : ctx.identificador()) 
-            // Verifica se está lendo uma variável que ainda não foi declarada.
-            if (!escopo.obterEscopoAtual().existe(id.getText()))
+            // Caso variavel lida não tenha sido declarada -> adiciona erro 
+            if (!escopo.obterEscopoAtual().existe(id.getText())){
+                System.out.println("Aqui");
                 adicionarErrorsSemanticos(id.getStart(), "identificador " + id.getText() + " nao declarado");
+            }
 
         return super.visitCmdLeia(ctx);
     }
 
+    // Visitador de comando escreve 
     @Override
     public Object visitCmdEscreva(AlgumaParser.CmdEscrevaContext ctx) {
         TipoDeclaracao tipo;
 
         for (AlgumaParser.ExpressaoContext expressao : ctx.expressao())
-            tipo = verificarTipo(escopo.obterEscopoAtual(), expressao);
+            tipo = verificarTipo(escopo, expressao);
 
         return super.visitCmdEscreva(ctx);
     }
 
+    // Visitador de comando enquanto 
     @Override
     public Object visitCmdEnquanto(AlgumaParser.CmdEnquantoContext ctx) {
-        TipoDeclaracao tipo = verificarTipo(escopo.obterEscopoAtual(), ctx.expressao());
+        TipoDeclaracao tipo = verificarTipo(escopo, ctx.expressao());
 
         return super.visitCmdEnquanto(ctx);
     }
 
+    // Visitador de comando se 
     @Override
     public Object visitCmdSe(AlgumaParser.CmdSeContext ctx) {
-        TipoDeclaracao tipo = verificarTipo(escopo.obterEscopoAtual(), ctx.expressao());
+        TipoDeclaracao tipo = verificarTipo(escopo, ctx.expressao());
 
         return super.visitCmdSe(ctx);
     }
-    */
-    //Testa se uma atribuicao é valida
+    
+    // Visitador de comando atribuição -> Testa se uma atribuicao é valida
     @Override
     public Object visitCmdAtribuicao(AlgumaParser.CmdAtribuicaoContext ctx) {
-        TipoDeclaracao tipoExpressao = AlgumaSemanticoT4Utils.verificarTipo(escopo, ctx.expressao());
-        boolean error = false;
+        TipoDeclaracao tipoExpressao = verificarTipo(escopo, ctx.expressao());
         String nome = ctx.identificador().getText();
         if (tipoExpressao != TipoDeclaracao.INVALIDO) {
-            for (TabelaDeSimbolos escopoAtual : escopo.percorrerEscoposAninhados()) {
-                //Testa se a variavel que recebe a expressao ja foi declarada 
-                if (escopoAtual.existe(nome)) {
-                    TipoDeclaracao tipoVariavel = AlgumaSemanticoT4Utils.verificarTipo(escopo, nome);
-                    Boolean expNumeric = tipoExpressao == TipoDeclaracao.INTEIRO || tipoExpressao == TipoDeclaracao.REAL;
-                    Boolean varNumeric = tipoVariavel == TipoDeclaracao.INTEIRO || tipoVariavel == TipoDeclaracao.REAL;
-                    //Testa de a variavel e a expressao sao do tipo real ou inteiro E se elas sao iguais
-                    if (!(varNumeric && expNumeric) && tipoVariavel != tipoExpressao) {
-                        error = true;
-                    }
+            //Erro de variavel nao declarada na atribuição 
+            if (!escopo.obterEscopoAtual().existe(nome))
+                adicionarErrorsSemanticos(ctx.identificador().getStart(), "identificador " + ctx.identificador().getText() + " nao declarado");
+            else {
+                TipoDeclaracao varTipo = verificarTipo(escopo, nome);
+                
+                if (varTipo == TipoDeclaracao.INTEIRO || varTipo == TipoDeclaracao.REAL) {
+                    // Verifica se a variável atual é um ponteiro para apresentar uma mensagem personalizada
+                    // para este caso.
+                    if (ctx.getText().contains("ponteiro")) {
+                        if (!(varTipo == TipoDeclaracao.INTEIRO && tipoExpressao == TipoDeclaracao.REAL) && !(varTipo == TipoDeclaracao.REAL && tipoExpressao == TipoDeclaracao.INTEIRO) && !(varTipo == TipoDeclaracao.REAL && tipoExpressao == TipoDeclaracao.REAL))
+                            // Caso o tipo da expressão (restante da parcela sendo analisada) seja diferente de inteiro,
+                            // não é possível tratar o valor como um número real, logo, os tipos são incompatíveis, pois
+                            // seria a situação de estar comparando um número com um literal, por exemplo.
+                            if (tipoExpressao != TipoDeclaracao.INTEIRO){
+                                adicionarErrorsSemanticos(ctx.identificador().getStart(), "atribuicao nao compativel para ^" + ctx.identificador().getText());
+                            }
+                    } 
+                    else if (!(varTipo == TipoDeclaracao.INTEIRO && tipoExpressao == TipoDeclaracao.REAL) && !(varTipo == TipoDeclaracao.REAL && tipoExpressao == TipoDeclaracao.INTEIRO) && !(varTipo == TipoDeclaracao.REAL && tipoExpressao == TipoDeclaracao.REAL))
+                        if (tipoExpressao != TipoDeclaracao.INTEIRO){
+                            adicionarErrorsSemanticos(ctx.identificador().getStart(), "atribuicao nao compativel para " + ctx.identificador().getText());               
+                        }
+                }
+                // Caso a expressão analisada não tenha números que precisem ser tratados de maneira especial,
+                // apenas verifica se os tipos são diferentes.
+                else if (varTipo != tipoExpressao){
+                    adicionarErrorsSemanticos(ctx.identificador().getStart(), "atribuicao nao compativel para " + ctx.identificador().getText());
                 }
             }
-        } else {
-            //Caso em que a expressao é invalida 
-            error = true;
         }
-
-        if (error)
-            AlgumaSemanticoT4Utils.adicionarErrorsSemanticos(ctx.identificador().start, "atribuicao nao compativel para " + nome);
 
         return super.visitCmdAtribuicao(ctx);
     }
